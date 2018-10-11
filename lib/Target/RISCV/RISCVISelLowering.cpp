@@ -39,9 +39,17 @@ using namespace llvm;
 
 STATISTIC(NumTailCalls, "Number of tail calls");
 
+static bool isRVE = false;
+
 RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
                                          const RISCVSubtarget &STI)
     : TargetLowering(TM), Subtarget(STI) {
+
+  if(STI.isEmbed())
+    isRVE = true;
+  else
+    isRVE = false;
+
 
   MVT XLenVT = Subtarget.getXLenVT();
 
@@ -676,9 +684,15 @@ RISCVTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
 // register-size fields in the same situations they would be for fixed
 // arguments.
 
+
 static const MCPhysReg ArgGPRs[] = {
   RISCV::X10, RISCV::X11, RISCV::X12, RISCV::X13,
   RISCV::X14, RISCV::X15, RISCV::X16, RISCV::X17
+};
+
+static const MCPhysReg EArgGPRs[] = {
+  RISCV::X10, RISCV::X11, RISCV::X12, RISCV::X13,
+  RISCV::X14, RISCV::X15
 };
 
 // Pass a 2*XLEN argument that has been split into two XLEN values through
@@ -687,162 +701,321 @@ static bool CC_RISCVAssign2XLen(unsigned XLen, CCState &State, CCValAssign VA1,
                                 ISD::ArgFlagsTy ArgFlags1, unsigned ValNo2,
                                 MVT ValVT2, MVT LocVT2,
                                 ISD::ArgFlagsTy ArgFlags2) {
-  unsigned XLenInBytes = XLen / 8;
-  if (unsigned Reg = State.AllocateReg(ArgGPRs)) {
-    // At least one half can be passed via register.
-    State.addLoc(CCValAssign::getReg(VA1.getValNo(), VA1.getValVT(), Reg,
-                                     VA1.getLocVT(), CCValAssign::Full));
+  if(isRVE){
+    unsigned XLenInBytes = XLen / 8;
+    if (unsigned Reg = State.AllocateReg(EArgGPRs)) {
+      // At least one half can be passed via register.
+      State.addLoc(CCValAssign::getReg(VA1.getValNo(), VA1.getValVT(), Reg,
+                                      VA1.getLocVT(), CCValAssign::Full));
+    } else {
+      // Both halves must be passed on the stack, with proper alignment.
+      unsigned StackAlign = std::max(XLenInBytes, ArgFlags1.getOrigAlign());
+      State.addLoc(
+          CCValAssign::getMem(VA1.getValNo(), VA1.getValVT(),
+                              State.AllocateStack(XLenInBytes, StackAlign),
+                              VA1.getLocVT(), CCValAssign::Full));
+      State.addLoc(CCValAssign::getMem(
+          ValNo2, ValVT2, State.AllocateStack(XLenInBytes, XLenInBytes), LocVT2,
+          CCValAssign::Full));
+      return false;
+    }
+
+    if (unsigned Reg = State.AllocateReg(EArgGPRs)) {
+      // The second half can also be passed via register.
+      State.addLoc(
+          CCValAssign::getReg(ValNo2, ValVT2, Reg, LocVT2, CCValAssign::Full));
+    } else {
+      // The second half is passed via the stack, without additional alignment.
+      State.addLoc(CCValAssign::getMem(
+          ValNo2, ValVT2, State.AllocateStack(XLenInBytes, XLenInBytes), LocVT2,
+          CCValAssign::Full));
+    }
+
+    return false;
   } else {
-    // Both halves must be passed on the stack, with proper alignment.
-    unsigned StackAlign = std::max(XLenInBytes, ArgFlags1.getOrigAlign());
-    State.addLoc(
-        CCValAssign::getMem(VA1.getValNo(), VA1.getValVT(),
-                            State.AllocateStack(XLenInBytes, StackAlign),
-                            VA1.getLocVT(), CCValAssign::Full));
-    State.addLoc(CCValAssign::getMem(
-        ValNo2, ValVT2, State.AllocateStack(XLenInBytes, XLenInBytes), LocVT2,
-        CCValAssign::Full));
+    unsigned XLenInBytes = XLen / 8;
+    if (unsigned Reg = State.AllocateReg(ArgGPRs)) {
+      // At least one half can be passed via register.
+      State.addLoc(CCValAssign::getReg(VA1.getValNo(), VA1.getValVT(), Reg,
+                                      VA1.getLocVT(), CCValAssign::Full));
+    } else {
+      // Both halves must be passed on the stack, with proper alignment.
+      unsigned StackAlign = std::max(XLenInBytes, ArgFlags1.getOrigAlign());
+      State.addLoc(
+          CCValAssign::getMem(VA1.getValNo(), VA1.getValVT(),
+                              State.AllocateStack(XLenInBytes, StackAlign),
+                              VA1.getLocVT(), CCValAssign::Full));
+      State.addLoc(CCValAssign::getMem(
+          ValNo2, ValVT2, State.AllocateStack(XLenInBytes, XLenInBytes), LocVT2,
+          CCValAssign::Full));
+      return false;
+    }
+
+    if (unsigned Reg = State.AllocateReg(ArgGPRs)) {
+      // The second half can also be passed via register.
+      State.addLoc(
+          CCValAssign::getReg(ValNo2, ValVT2, Reg, LocVT2, CCValAssign::Full));
+    } else {
+      // The second half is passed via the stack, without additional alignment.
+      State.addLoc(CCValAssign::getMem(
+          ValNo2, ValVT2, State.AllocateStack(XLenInBytes, XLenInBytes), LocVT2,
+          CCValAssign::Full));
+    }
+
     return false;
   }
-
-  if (unsigned Reg = State.AllocateReg(ArgGPRs)) {
-    // The second half can also be passed via register.
-    State.addLoc(
-        CCValAssign::getReg(ValNo2, ValVT2, Reg, LocVT2, CCValAssign::Full));
-  } else {
-    // The second half is passed via the stack, without additional alignment.
-    State.addLoc(CCValAssign::getMem(
-        ValNo2, ValVT2, State.AllocateStack(XLenInBytes, XLenInBytes), LocVT2,
-        CCValAssign::Full));
-  }
-
-  return false;
+  
 }
 
 // Implements the RISC-V calling convention. Returns true upon failure.
 static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
                      CCValAssign::LocInfo LocInfo, ISD::ArgFlagsTy ArgFlags,
                      CCState &State, bool IsFixed, bool IsRet, Type *OrigTy) {
-  unsigned XLen = DL.getLargestLegalIntTypeSizeInBits();
-  assert(XLen == 32 || XLen == 64);
-  MVT XLenVT = XLen == 32 ? MVT::i32 : MVT::i64;
-  if (ValVT == MVT::f32) {
-    LocVT = MVT::i32;
-    LocInfo = CCValAssign::BCvt;
-  }
+  if(isRVE){
+    unsigned XLen = DL.getLargestLegalIntTypeSizeInBits();
+    assert(XLen == 32 || XLen == 64);
+    MVT XLenVT = XLen == 32 ? MVT::i32 : MVT::i64;
+    if (ValVT == MVT::f32) {
+      LocVT = MVT::i32;
+      LocInfo = CCValAssign::BCvt;
+    }
 
-  // Any return value split in to more than two values can't be returned
-  // directly.
-  if (IsRet && ValNo > 1)
-    return true;
+    // Any return value split in to more than two values can't be returned
+    // directly.
+    if (IsRet && ValNo > 1)
+      return true;
 
-  // If this is a variadic argument, the RISC-V calling convention requires
-  // that it is assigned an 'even' or 'aligned' register if it has 8-byte
-  // alignment (RV32) or 16-byte alignment (RV64). An aligned register should
-  // be used regardless of whether the original argument was split during
-  // legalisation or not. The argument will not be passed by registers if the
-  // original type is larger than 2*XLEN, so the register alignment rule does
-  // not apply.
-  unsigned TwoXLenInBytes = (2 * XLen) / 8;
-  if (!IsFixed && ArgFlags.getOrigAlign() == TwoXLenInBytes &&
-      DL.getTypeAllocSize(OrigTy) == TwoXLenInBytes) {
-    unsigned RegIdx = State.getFirstUnallocated(ArgGPRs);
-    // Skip 'odd' register if necessary.
-    if (RegIdx != array_lengthof(ArgGPRs) && RegIdx % 2 == 1)
-      State.AllocateReg(ArgGPRs);
-  }
+    // If this is a variadic argument, the RISC-V calling convention requires
+    // that it is assigned an 'even' or 'aligned' register if it has 8-byte
+    // alignment (RV32) or 16-byte alignment (RV64). An aligned register should
+    // be used regardless of whether the original argument was split during
+    // legalisation or not. The argument will not be passed by registers if the
+    // original type is larger than 2*XLEN, so the register alignment rule does
+    // not apply.
+    unsigned TwoXLenInBytes = (2 * XLen) / 8;
+    if (!IsFixed && ArgFlags.getOrigAlign() == TwoXLenInBytes &&
+        DL.getTypeAllocSize(OrigTy) == TwoXLenInBytes) {
+      unsigned RegIdx = State.getFirstUnallocated(EArgGPRs);
+      // Skip 'odd' register if necessary.
+      if (RegIdx != array_lengthof(EArgGPRs) && RegIdx % 2 == 1)
+        State.AllocateReg(EArgGPRs);
+    }
 
-  SmallVectorImpl<CCValAssign> &PendingLocs = State.getPendingLocs();
-  SmallVectorImpl<ISD::ArgFlagsTy> &PendingArgFlags =
-      State.getPendingArgFlags();
+    SmallVectorImpl<CCValAssign> &PendingLocs = State.getPendingLocs();
+    SmallVectorImpl<ISD::ArgFlagsTy> &PendingArgFlags =
+        State.getPendingArgFlags();
 
-  assert(PendingLocs.size() == PendingArgFlags.size() &&
-         "PendingLocs and PendingArgFlags out of sync");
+    assert(PendingLocs.size() == PendingArgFlags.size() &&
+          "PendingLocs and PendingArgFlags out of sync");
 
-  // Handle passing f64 on RV32D with a soft float ABI.
-  if (XLen == 32 && ValVT == MVT::f64) {
-    assert(!ArgFlags.isSplit() && PendingLocs.empty() &&
-           "Can't lower f64 if it is split");
-    // Depending on available argument GPRS, f64 may be passed in a pair of
-    // GPRs, split between a GPR and the stack, or passed completely on the
-    // stack. LowerCall/LowerFormalArguments/LowerReturn must recognise these
-    // cases.
+    // Handle passing f64 on RV32D with a soft float ABI.
+    if (XLen == 32 && ValVT == MVT::f64) {
+      assert(!ArgFlags.isSplit() && PendingLocs.empty() &&
+            "Can't lower f64 if it is split");
+      // Depending on available argument GPRS, f64 may be passed in a pair of
+      // GPRs, split between a GPR and the stack, or passed completely on the
+      // stack. LowerCall/LowerFormalArguments/LowerReturn must recognise these
+      // cases.
+      unsigned Reg = State.AllocateReg(EArgGPRs);
+      LocVT = MVT::i32;
+      if (!Reg) {
+        unsigned StackOffset = State.AllocateStack(8, 8);
+        State.addLoc(
+            CCValAssign::getMem(ValNo, ValVT, StackOffset, LocVT, LocInfo));
+        return false;
+      }
+      if (!State.AllocateReg(EArgGPRs))
+        State.AllocateStack(4, 4);
+      State.addLoc(CCValAssign::getReg(ValNo, ValVT, Reg, LocVT, LocInfo));
+      return false;
+    }
+
+    // Split arguments might be passed indirectly, so keep track of the pending
+    // values.
+    if (ArgFlags.isSplit() || !PendingLocs.empty()) {
+      LocVT = XLenVT;
+      LocInfo = CCValAssign::Indirect;
+      PendingLocs.push_back(
+          CCValAssign::getPending(ValNo, ValVT, LocVT, LocInfo));
+      PendingArgFlags.push_back(ArgFlags);
+      if (!ArgFlags.isSplitEnd()) {
+        return false;
+      }
+    }
+
+    // If the split argument only had two elements, it should be passed directly
+    // in registers or on the stack.
+    if (ArgFlags.isSplitEnd() && PendingLocs.size() <= 2) {
+      assert(PendingLocs.size() == 2 && "Unexpected PendingLocs.size()");
+      // Apply the normal calling convention rules to the first half of the
+      // split argument.
+      CCValAssign VA = PendingLocs[0];
+      ISD::ArgFlagsTy AF = PendingArgFlags[0];
+      PendingLocs.clear();
+      PendingArgFlags.clear();
+      return CC_RISCVAssign2XLen(XLen, State, VA, AF, ValNo, ValVT, LocVT,
+                                ArgFlags);
+    }
+
+    // Allocate to a register if possible, or else a stack slot.
+    unsigned Reg = State.AllocateReg(EArgGPRs);
+    unsigned StackOffset = Reg ? 0 : State.AllocateStack(XLen / 8, XLen / 8);
+
+    // If we reach this point and PendingLocs is non-empty, we must be at the
+    // end of a split argument that must be passed indirectly.
+    if (!PendingLocs.empty()) {
+      assert(ArgFlags.isSplitEnd() && "Expected ArgFlags.isSplitEnd()");
+      assert(PendingLocs.size() > 2 && "Unexpected PendingLocs.size()");
+
+      for (auto &It : PendingLocs) {
+        if (Reg)
+          It.convertToReg(Reg);
+        else
+          It.convertToMem(StackOffset);
+        State.addLoc(It);
+      }
+      PendingLocs.clear();
+      PendingArgFlags.clear();
+      return false;
+    }
+
+    assert(LocVT == XLenVT && "Expected an XLenVT at this stage");
+
+    if (Reg) {
+      State.addLoc(CCValAssign::getReg(ValNo, ValVT, Reg, LocVT, LocInfo));
+      return false;
+    }
+
+    if (ValVT == MVT::f32) {
+      LocVT = MVT::f32;
+      LocInfo = CCValAssign::Full;
+    }
+    State.addLoc(CCValAssign::getMem(ValNo, ValVT, StackOffset, LocVT, LocInfo));
+    return false;
+
+  } else {
+    unsigned XLen = DL.getLargestLegalIntTypeSizeInBits();
+    assert(XLen == 32 || XLen == 64);
+    MVT XLenVT = XLen == 32 ? MVT::i32 : MVT::i64;
+    if (ValVT == MVT::f32) {
+      LocVT = MVT::i32;
+      LocInfo = CCValAssign::BCvt;
+    }
+
+    // Any return value split in to more than two values can't be returned
+    // directly.
+    if (IsRet && ValNo > 1)
+      return true;
+
+    // If this is a variadic argument, the RISC-V calling convention requires
+    // that it is assigned an 'even' or 'aligned' register if it has 8-byte
+    // alignment (RV32) or 16-byte alignment (RV64). An aligned register should
+    // be used regardless of whether the original argument was split during
+    // legalisation or not. The argument will not be passed by registers if the
+    // original type is larger than 2*XLEN, so the register alignment rule does
+    // not apply.
+    unsigned TwoXLenInBytes = (2 * XLen) / 8;
+    if (!IsFixed && ArgFlags.getOrigAlign() == TwoXLenInBytes &&
+        DL.getTypeAllocSize(OrigTy) == TwoXLenInBytes) {
+      unsigned RegIdx = State.getFirstUnallocated(ArgGPRs);
+      // Skip 'odd' register if necessary.
+      if (RegIdx != array_lengthof(ArgGPRs) && RegIdx % 2 == 1)
+        State.AllocateReg(ArgGPRs);
+    }
+
+    SmallVectorImpl<CCValAssign> &PendingLocs = State.getPendingLocs();
+    SmallVectorImpl<ISD::ArgFlagsTy> &PendingArgFlags =
+        State.getPendingArgFlags();
+
+    assert(PendingLocs.size() == PendingArgFlags.size() &&
+          "PendingLocs and PendingArgFlags out of sync");
+
+    // Handle passing f64 on RV32D with a soft float ABI.
+    if (XLen == 32 && ValVT == MVT::f64) {
+      assert(!ArgFlags.isSplit() && PendingLocs.empty() &&
+            "Can't lower f64 if it is split");
+      // Depending on available argument GPRS, f64 may be passed in a pair of
+      // GPRs, split between a GPR and the stack, or passed completely on the
+      // stack. LowerCall/LowerFormalArguments/LowerReturn must recognise these
+      // cases.
+      unsigned Reg = State.AllocateReg(ArgGPRs);
+      LocVT = MVT::i32;
+      if (!Reg) {
+        unsigned StackOffset = State.AllocateStack(8, 8);
+        State.addLoc(
+            CCValAssign::getMem(ValNo, ValVT, StackOffset, LocVT, LocInfo));
+        return false;
+      }
+      if (!State.AllocateReg(ArgGPRs))
+        State.AllocateStack(4, 4);
+      State.addLoc(CCValAssign::getReg(ValNo, ValVT, Reg, LocVT, LocInfo));
+      return false;
+    }
+
+    // Split arguments might be passed indirectly, so keep track of the pending
+    // values.
+    if (ArgFlags.isSplit() || !PendingLocs.empty()) {
+      LocVT = XLenVT;
+      LocInfo = CCValAssign::Indirect;
+      PendingLocs.push_back(
+          CCValAssign::getPending(ValNo, ValVT, LocVT, LocInfo));
+      PendingArgFlags.push_back(ArgFlags);
+      if (!ArgFlags.isSplitEnd()) {
+        return false;
+      }
+    }
+
+    // If the split argument only had two elements, it should be passed directly
+    // in registers or on the stack.
+    if (ArgFlags.isSplitEnd() && PendingLocs.size() <= 2) {
+      assert(PendingLocs.size() == 2 && "Unexpected PendingLocs.size()");
+      // Apply the normal calling convention rules to the first half of the
+      // split argument.
+      CCValAssign VA = PendingLocs[0];
+      ISD::ArgFlagsTy AF = PendingArgFlags[0];
+      PendingLocs.clear();
+      PendingArgFlags.clear();
+      return CC_RISCVAssign2XLen(XLen, State, VA, AF, ValNo, ValVT, LocVT,
+                                ArgFlags);
+    }
+
+    // Allocate to a register if possible, or else a stack slot.
     unsigned Reg = State.AllocateReg(ArgGPRs);
-    LocVT = MVT::i32;
-    if (!Reg) {
-      unsigned StackOffset = State.AllocateStack(8, 8);
-      State.addLoc(
-          CCValAssign::getMem(ValNo, ValVT, StackOffset, LocVT, LocInfo));
+    unsigned StackOffset = Reg ? 0 : State.AllocateStack(XLen / 8, XLen / 8);
+
+    // If we reach this point and PendingLocs is non-empty, we must be at the
+    // end of a split argument that must be passed indirectly.
+    if (!PendingLocs.empty()) {
+      assert(ArgFlags.isSplitEnd() && "Expected ArgFlags.isSplitEnd()");
+      assert(PendingLocs.size() > 2 && "Unexpected PendingLocs.size()");
+
+      for (auto &It : PendingLocs) {
+        if (Reg)
+          It.convertToReg(Reg);
+        else
+          It.convertToMem(StackOffset);
+        State.addLoc(It);
+      }
+      PendingLocs.clear();
+      PendingArgFlags.clear();
       return false;
     }
-    if (!State.AllocateReg(ArgGPRs))
-      State.AllocateStack(4, 4);
-    State.addLoc(CCValAssign::getReg(ValNo, ValVT, Reg, LocVT, LocInfo));
-    return false;
-  }
 
-  // Split arguments might be passed indirectly, so keep track of the pending
-  // values.
-  if (ArgFlags.isSplit() || !PendingLocs.empty()) {
-    LocVT = XLenVT;
-    LocInfo = CCValAssign::Indirect;
-    PendingLocs.push_back(
-        CCValAssign::getPending(ValNo, ValVT, LocVT, LocInfo));
-    PendingArgFlags.push_back(ArgFlags);
-    if (!ArgFlags.isSplitEnd()) {
+    assert(LocVT == XLenVT && "Expected an XLenVT at this stage");
+
+    if (Reg) {
+      State.addLoc(CCValAssign::getReg(ValNo, ValVT, Reg, LocVT, LocInfo));
       return false;
     }
-  }
 
-  // If the split argument only had two elements, it should be passed directly
-  // in registers or on the stack.
-  if (ArgFlags.isSplitEnd() && PendingLocs.size() <= 2) {
-    assert(PendingLocs.size() == 2 && "Unexpected PendingLocs.size()");
-    // Apply the normal calling convention rules to the first half of the
-    // split argument.
-    CCValAssign VA = PendingLocs[0];
-    ISD::ArgFlagsTy AF = PendingArgFlags[0];
-    PendingLocs.clear();
-    PendingArgFlags.clear();
-    return CC_RISCVAssign2XLen(XLen, State, VA, AF, ValNo, ValVT, LocVT,
-                               ArgFlags);
-  }
-
-  // Allocate to a register if possible, or else a stack slot.
-  unsigned Reg = State.AllocateReg(ArgGPRs);
-  unsigned StackOffset = Reg ? 0 : State.AllocateStack(XLen / 8, XLen / 8);
-
-  // If we reach this point and PendingLocs is non-empty, we must be at the
-  // end of a split argument that must be passed indirectly.
-  if (!PendingLocs.empty()) {
-    assert(ArgFlags.isSplitEnd() && "Expected ArgFlags.isSplitEnd()");
-    assert(PendingLocs.size() > 2 && "Unexpected PendingLocs.size()");
-
-    for (auto &It : PendingLocs) {
-      if (Reg)
-        It.convertToReg(Reg);
-      else
-        It.convertToMem(StackOffset);
-      State.addLoc(It);
+    if (ValVT == MVT::f32) {
+      LocVT = MVT::f32;
+      LocInfo = CCValAssign::Full;
     }
-    PendingLocs.clear();
-    PendingArgFlags.clear();
+    State.addLoc(CCValAssign::getMem(ValNo, ValVT, StackOffset, LocVT, LocInfo));
     return false;
   }
-
-  assert(LocVT == XLenVT && "Expected an XLenVT at this stage");
-
-  if (Reg) {
-    State.addLoc(CCValAssign::getReg(ValNo, ValVT, Reg, LocVT, LocInfo));
-    return false;
-  }
-
-  if (ValVT == MVT::f32) {
-    LocVT = MVT::f32;
-    LocInfo = CCValAssign::Full;
-  }
-  State.addLoc(CCValAssign::getMem(ValNo, ValVT, StackOffset, LocVT, LocInfo));
-  return false;
+  
 }
 
 void RISCVTargetLowering::analyzeInputArgs(

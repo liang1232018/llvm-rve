@@ -36,6 +36,7 @@ class RISCVSubtarget : public RISCVGenSubtargetInfo {
   bool HasStdExtD = false;
   bool HasStdExtC = false;
   bool HasRV64 = false;
+  bool HasEmbed = false;
   bool EnableLinkerRelax = false;
   unsigned XLen = 32;
   MVT XLenVT = MVT::i32;
@@ -78,6 +79,7 @@ public:
   bool hasStdExtD() const { return HasStdExtD; }
   bool hasStdExtC() const { return HasStdExtC; }
   bool is64Bit() const { return HasRV64; }
+  bool isEmbed() const { return HasEmbed; }
   bool enableLinkerRelax() const { return EnableLinkerRelax; }
   MVT getXLenVT() const { return XLenVT; }
   unsigned getXLen() const { return XLen; }

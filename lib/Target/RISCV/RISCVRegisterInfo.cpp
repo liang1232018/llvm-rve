@@ -34,12 +34,16 @@ RISCVRegisterInfo::RISCVRegisterInfo(unsigned HwMode)
 const MCPhysReg *
 RISCVRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   if (MF->getFunction().hasFnAttribute("interrupt")) {
+    if (MF->getSubtarget<RISCVSubtarget>().isEmbed())
+      return CSR_E_Interrupt_SaveList;
     if (MF->getSubtarget<RISCVSubtarget>().hasStdExtD())
       return CSR_XLEN_F64_Interrupt_SaveList;
     if (MF->getSubtarget<RISCVSubtarget>().hasStdExtF())
       return CSR_XLEN_F32_Interrupt_SaveList;
     return CSR_Interrupt_SaveList;
   }
+  if (MF->getSubtarget<RISCVSubtarget>().isEmbed())
+      return CSR_E_SaveList;
   return CSR_SaveList;
 }
 
@@ -53,6 +57,26 @@ BitVector RISCVRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   markSuperRegs(Reserved, RISCV::X3); // gp
   markSuperRegs(Reserved, RISCV::X4); // tp
   markSuperRegs(Reserved, RISCV::X8); // fp
+
+  // if rve , need to reserve x16-x31 reg
+  if(MF.getSubtarget<RISCVSubtarget>().isEmbed()) {
+    markSuperRegs(Reserved, RISCV::X16);
+    markSuperRegs(Reserved, RISCV::X17);
+    markSuperRegs(Reserved, RISCV::X18);
+    markSuperRegs(Reserved, RISCV::X19);
+    markSuperRegs(Reserved, RISCV::X20);
+    markSuperRegs(Reserved, RISCV::X21);
+    markSuperRegs(Reserved, RISCV::X22);
+    markSuperRegs(Reserved, RISCV::X23);
+    markSuperRegs(Reserved, RISCV::X24);
+    markSuperRegs(Reserved, RISCV::X25);
+    markSuperRegs(Reserved, RISCV::X26);
+    markSuperRegs(Reserved, RISCV::X27);
+    markSuperRegs(Reserved, RISCV::X28);
+    markSuperRegs(Reserved, RISCV::X29);
+    markSuperRegs(Reserved, RISCV::X30);
+    markSuperRegs(Reserved, RISCV::X31);
+  }
   assert(checkAllSuperRegsMarked(Reserved));
   return Reserved;
 }
@@ -118,11 +142,15 @@ const uint32_t *
 RISCVRegisterInfo::getCallPreservedMask(const MachineFunction & MF,
                                         CallingConv::ID /*CC*/) const {
   if (MF.getFunction().hasFnAttribute("interrupt")) {
+    if (MF.getSubtarget<RISCVSubtarget>().isEmbed())
+      return CSR_E_Interrupt_RegMask;
     if (MF.getSubtarget<RISCVSubtarget>().hasStdExtD())
       return CSR_XLEN_F64_Interrupt_RegMask;
     if (MF.getSubtarget<RISCVSubtarget>().hasStdExtF())
       return CSR_XLEN_F32_Interrupt_RegMask;
     return CSR_Interrupt_RegMask;
   }
+  if (MF.getSubtarget<RISCVSubtarget>().isEmbed())
+      return CSR_Interrupt_RegMask;
   return CSR_RegMask;
 }

@@ -15,6 +15,7 @@
 // RISCVISelLowering.cpp (CC_RISCV).
 
 def CSR : CalleeSavedRegs<(add X1, X3, X4, X8, X9, (sequence "X%u", 18, 27))>;
+def CSR_E : CalleeSavedRegs<(add X1, X3, X4, X8, X9)>;
 
 // Needed for implementation of RISCVRegisterInfo::getNoPreservedMask()
 def CSR_NoRegs : CalleeSavedRegs<(add)>;
@@ -27,6 +28,11 @@ def CSR_Interrupt : CalleeSavedRegs<(add X1,
     (sequence "X%u", 12, 17),
     (sequence "X%u", 18, 27),
     (sequence "X%u", 28, 31))>;
+def CSR_E_Interrupt : CalleeSavedRegs<(add X1,
+    (sequence "X%u", 3, 9),
+    (sequence "X%u", 10, 11),
+    (sequence "X%u", 12, 15))>;
+
 
 // Same as CSR_Interrupt, but including all 32-bit FP registers.
 def CSR_XLEN_F32_Interrupt: CalleeSavedRegs<(add X1,
