@@ -45,11 +45,10 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
                                          const RISCVSubtarget &STI)
     : TargetLowering(TM), Subtarget(STI) {
 
-  if(STI.isEmbed())
+  if (STI.isEmbed())
     isRVE = true;
   else
     isRVE = false;
-
 
   MVT XLenVT = Subtarget.getXLenVT();
 
@@ -684,16 +683,13 @@ RISCVTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
 // register-size fields in the same situations they would be for fixed
 // arguments.
 
-
 static const MCPhysReg ArgGPRs[] = {
   RISCV::X10, RISCV::X11, RISCV::X12, RISCV::X13,
   RISCV::X14, RISCV::X15, RISCV::X16, RISCV::X17
 };
 
-static const MCPhysReg EArgGPRs[] = {
-  RISCV::X10, RISCV::X11, RISCV::X12, RISCV::X13,
-  RISCV::X14, RISCV::X15
-};
+static const MCPhysReg EArgGPRs[] = {RISCV::X10, RISCV::X11, RISCV::X12,
+                                     RISCV::X13, RISCV::X14, RISCV::X15};
 
 // Pass a 2*XLEN argument that has been split into two XLEN values through
 // registers or the stack as necessary.
@@ -701,12 +697,12 @@ static bool CC_RISCVAssign2XLen(unsigned XLen, CCState &State, CCValAssign VA1,
                                 ISD::ArgFlagsTy ArgFlags1, unsigned ValNo2,
                                 MVT ValVT2, MVT LocVT2,
                                 ISD::ArgFlagsTy ArgFlags2) {
-  if(isRVE){
+  if (isRVE) {
     unsigned XLenInBytes = XLen / 8;
     if (unsigned Reg = State.AllocateReg(EArgGPRs)) {
       // At least one half can be passed via register.
       State.addLoc(CCValAssign::getReg(VA1.getValNo(), VA1.getValVT(), Reg,
-                                      VA1.getLocVT(), CCValAssign::Full));
+                                       VA1.getLocVT(), CCValAssign::Full));
     } else {
       // Both halves must be passed on the stack, with proper alignment.
       unsigned StackAlign = std::max(XLenInBytes, ArgFlags1.getOrigAlign());
@@ -737,7 +733,7 @@ static bool CC_RISCVAssign2XLen(unsigned XLen, CCState &State, CCValAssign VA1,
     if (unsigned Reg = State.AllocateReg(ArgGPRs)) {
       // At least one half can be passed via register.
       State.addLoc(CCValAssign::getReg(VA1.getValNo(), VA1.getValVT(), Reg,
-                                      VA1.getLocVT(), CCValAssign::Full));
+                                       VA1.getLocVT(), CCValAssign::Full));
     } else {
       // Both halves must be passed on the stack, with proper alignment.
       unsigned StackAlign = std::max(XLenInBytes, ArgFlags1.getOrigAlign());
@@ -764,14 +760,13 @@ static bool CC_RISCVAssign2XLen(unsigned XLen, CCState &State, CCValAssign VA1,
 
     return false;
   }
-  
 }
 
 // Implements the RISC-V calling convention. Returns true upon failure.
 static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
                      CCValAssign::LocInfo LocInfo, ISD::ArgFlagsTy ArgFlags,
                      CCState &State, bool IsFixed, bool IsRet, Type *OrigTy) {
-  if(isRVE){
+  if (isRVE) {
     unsigned XLen = DL.getLargestLegalIntTypeSizeInBits();
     assert(XLen == 32 || XLen == 64);
     MVT XLenVT = XLen == 32 ? MVT::i32 : MVT::i64;
@@ -806,12 +801,12 @@ static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
         State.getPendingArgFlags();
 
     assert(PendingLocs.size() == PendingArgFlags.size() &&
-          "PendingLocs and PendingArgFlags out of sync");
+           "PendingLocs and PendingArgFlags out of sync");
 
     // Handle passing f64 on RV32D with a soft float ABI.
     if (XLen == 32 && ValVT == MVT::f64) {
       assert(!ArgFlags.isSplit() && PendingLocs.empty() &&
-            "Can't lower f64 if it is split");
+             "Can't lower f64 if it is split");
       // Depending on available argument GPRS, f64 may be passed in a pair of
       // GPRs, split between a GPR and the stack, or passed completely on the
       // stack. LowerCall/LowerFormalArguments/LowerReturn must recognise these
@@ -854,7 +849,7 @@ static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
       PendingLocs.clear();
       PendingArgFlags.clear();
       return CC_RISCVAssign2XLen(XLen, State, VA, AF, ValNo, ValVT, LocVT,
-                                ArgFlags);
+                                 ArgFlags);
     }
 
     // Allocate to a register if possible, or else a stack slot.
@@ -890,7 +885,8 @@ static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
       LocVT = MVT::f32;
       LocInfo = CCValAssign::Full;
     }
-    State.addLoc(CCValAssign::getMem(ValNo, ValVT, StackOffset, LocVT, LocInfo));
+    State.addLoc(
+        CCValAssign::getMem(ValNo, ValVT, StackOffset, LocVT, LocInfo));
     return false;
 
   } else {
@@ -928,12 +924,12 @@ static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
         State.getPendingArgFlags();
 
     assert(PendingLocs.size() == PendingArgFlags.size() &&
-          "PendingLocs and PendingArgFlags out of sync");
+           "PendingLocs and PendingArgFlags out of sync");
 
     // Handle passing f64 on RV32D with a soft float ABI.
     if (XLen == 32 && ValVT == MVT::f64) {
       assert(!ArgFlags.isSplit() && PendingLocs.empty() &&
-            "Can't lower f64 if it is split");
+             "Can't lower f64 if it is split");
       // Depending on available argument GPRS, f64 may be passed in a pair of
       // GPRs, split between a GPR and the stack, or passed completely on the
       // stack. LowerCall/LowerFormalArguments/LowerReturn must recognise these
@@ -976,7 +972,7 @@ static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
       PendingLocs.clear();
       PendingArgFlags.clear();
       return CC_RISCVAssign2XLen(XLen, State, VA, AF, ValNo, ValVT, LocVT,
-                                ArgFlags);
+                                 ArgFlags);
     }
 
     // Allocate to a register if possible, or else a stack slot.
@@ -1012,10 +1008,10 @@ static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
       LocVT = MVT::f32;
       LocInfo = CCValAssign::Full;
     }
-    State.addLoc(CCValAssign::getMem(ValNo, ValVT, StackOffset, LocVT, LocInfo));
+    State.addLoc(
+        CCValAssign::getMem(ValNo, ValVT, StackOffset, LocVT, LocInfo));
     return false;
   }
-  
 }
 
 void RISCVTargetLowering::analyzeInputArgs(

@@ -43,7 +43,7 @@ RISCVRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
     return CSR_Interrupt_SaveList;
   }
   if (MF->getSubtarget<RISCVSubtarget>().isEmbed())
-      return CSR_E_SaveList;
+    return CSR_E_SaveList;
   return CSR_SaveList;
 }
 
@@ -59,7 +59,7 @@ BitVector RISCVRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   markSuperRegs(Reserved, RISCV::X8); // fp
 
   // if rve , need to reserve x16-x31 reg
-  if(MF.getSubtarget<RISCVSubtarget>().isEmbed()) {
+  if (MF.getSubtarget<RISCVSubtarget>().isEmbed()) {
     markSuperRegs(Reserved, RISCV::X16);
     markSuperRegs(Reserved, RISCV::X17);
     markSuperRegs(Reserved, RISCV::X18);
@@ -151,6 +151,6 @@ RISCVRegisterInfo::getCallPreservedMask(const MachineFunction & MF,
     return CSR_Interrupt_RegMask;
   }
   if (MF.getSubtarget<RISCVSubtarget>().isEmbed())
-      return CSR_Interrupt_RegMask;
+    return CSR_Interrupt_RegMask;
   return CSR_RegMask;
 }

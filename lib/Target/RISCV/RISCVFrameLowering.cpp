@@ -23,10 +23,10 @@
 using namespace llvm;
 
 RISCVFrameLowering::RISCVFrameLowering(const RISCVSubtarget &STI)
-      : TargetFrameLowering(StackGrowsDown,
-        STI.isEmbed()?  4 :/*StackAlignment=*/16,
-                            /*LocalAreaOffset=*/0),
-        STI(STI) { }
+    : TargetFrameLowering(StackGrowsDown,
+                          STI.isEmbed() ? 4 : /*StackAlignment=*/16,
+                          /*LocalAreaOffset=*/0),
+      STI(STI) {}
 
 bool RISCVFrameLowering::hasFP(const MachineFunction &MF) const {
   const TargetRegisterInfo *RegInfo = MF.getSubtarget().getRegisterInfo();
