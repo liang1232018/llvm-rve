@@ -56,8 +56,13 @@ static MCAsmInfo *createRISCVMCAsmInfo(const MCRegisterInfo &MRI,
 static MCSubtargetInfo *createRISCVMCSubtargetInfo(const Triple &TT,
                                                    StringRef CPU, StringRef FS) {
   std::string CPUName = CPU;
-  if (CPUName.empty())
-    CPUName = TT.isArch64Bit() ? "generic-rv64" : "generic-rv32";
+  if (CPUName.empty()) {
+    if (TT.getArch() == llvm::Triple::riscv32e) {
+      CPUName = "generic-rv32e";
+    } else {
+      CPUName = TT.isArch64Bit() ? "generic-rv64" : "generic-rv32";
+    }
+  }
   return createRISCVMCSubtargetInfoImpl(TT, CPUName, FS);
 }
 
@@ -85,7 +90,8 @@ static MCTargetStreamer *createRISCVAsmTargetStreamer(MCStreamer &S,
 }
 
 extern "C" void LLVMInitializeRISCVTargetMC() {
-  for (Target *T : {&getTheRISCV32Target(), &getTheRISCV64Target()}) {
+  for (Target *T : {&getTheRISCV32Target(), &getTheRISCV64Target(),
+                    &getTheRISCV32ETarget()}) {
     TargetRegistry::RegisterMCAsmInfo(*T, createRISCVMCAsmInfo);
     TargetRegistry::RegisterMCInstrInfo(*T, createRISCVMCInstrInfo);
     TargetRegistry::RegisterMCRegInfo(*T, createRISCVMCRegisterInfo);

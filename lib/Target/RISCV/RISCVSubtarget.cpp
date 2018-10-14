@@ -28,11 +28,17 @@ void RISCVSubtarget::anchor() {}
 
 RISCVSubtarget &RISCVSubtarget::initializeSubtargetDependencies(StringRef CPU,
                                                                 StringRef FS,
-                                                                bool Is64Bit) {
+                                                                bool Is64Bit,
+                                                                bool IsEmbed) {
   // Determine default and user-specified characteristics
   std::string CPUName = CPU;
-  if (CPUName.empty())
-    CPUName = Is64Bit ? "generic-rv64" : "generic-rv32";
+  if (CPUName.empty()) {
+    if (IsEmbed) {
+      CPUName = "generic-rv32e";
+    } else {
+      CPUName = Is64Bit ? "generic-rv64" : "generic-rv32";
+    }
+  }
   ParseSubtargetFeatures(CPUName, FS);
   if (Is64Bit) {
     XLenVT = MVT::i64;
@@ -44,5 +50,6 @@ RISCVSubtarget &RISCVSubtarget::initializeSubtargetDependencies(StringRef CPU,
 RISCVSubtarget::RISCVSubtarget(const Triple &TT, const std::string &CPU,
                                const std::string &FS, const TargetMachine &TM)
     : RISCVGenSubtargetInfo(TT, CPU, FS),
-      FrameLowering(initializeSubtargetDependencies(CPU, FS, TT.isArch64Bit())),
+      FrameLowering(initializeSubtargetDependencies(
+          CPU, FS, TT.isArch64Bit(), TT.getArch() == llvm::Triple::riscv32e)),
       InstrInfo(), RegInfo(getHwMode()), TLInfo(TM, *this) {}

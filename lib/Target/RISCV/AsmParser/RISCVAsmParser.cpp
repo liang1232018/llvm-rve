@@ -1440,4 +1440,5 @@ bool RISCVAsmParser::processInstruction(MCInst &Inst, SMLoc IDLoc,
 extern "C" void LLVMInitializeRISCVAsmParser() {
   RegisterMCAsmParser<RISCVAsmParser> X(getTheRISCV32Target());
   RegisterMCAsmParser<RISCVAsmParser> Y(getTheRISCV64Target());
+  RegisterMCAsmParser<RISCVAsmParser> Z(getTheRISCV32ETarget());
 }

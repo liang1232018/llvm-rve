@@ -48,7 +48,7 @@ def HasStdExtC : Predicate<"Subtarget->hasStdExtC()">,
 def Feature64Bit
     : SubtargetFeature<"64bit", "HasRV64", "true", "Implements RV64">;
 def FeatureEmbed
-    : SubtargetFeature<"Embed", "HasEmbed", "true", "Implements RVE">;
+    : SubtargetFeature<"Embed", "HasEmbed", "true", "Implements RV32E">;
 
 def IsRV64 : Predicate<"Subtarget->is64Bit()">,
                        AssemblerPredicate<"Feature64Bit">;
@@ -59,6 +59,7 @@ def IsRVEmbed : Predicate<"Subtarget->isEmbed()">,
 
 def RV64           : HwMode<"+64bit">;
 def RV32           : HwMode<"-64bit">;
+def RV32E          : HwMode<"+Embed">;
 
 def FeatureRelax
     : SubtargetFeature<"relax", "EnableLinkerRelax", "true",
@@ -85,6 +86,8 @@ include "RISCVSystemOperands.td"
 def : ProcessorModel<"generic-rv32", NoSchedModel, []>;
 
 def : ProcessorModel<"generic-rv64", NoSchedModel, [Feature64Bit]>;
+
+def : ProcessorModel<"generic-rv32e", NoSchedModel, [FeatureEmbed]>;
 
 //===----------------------------------------------------------------------===//
 // Define the RISC-V target.

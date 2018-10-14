@@ -27,6 +27,7 @@ using namespace llvm;
 extern "C" void LLVMInitializeRISCVTarget() {
   RegisterTargetMachine<RISCVTargetMachine> X(getTheRISCV32Target());
   RegisterTargetMachine<RISCVTargetMachine> Y(getTheRISCV64Target());
+  RegisterTargetMachine<RISCVTargetMachine> Z(getTheRISCV32ETarget());
   auto PR = PassRegistry::getPassRegistry();
   initializeRISCVExpandPseudoPass(*PR);
 }

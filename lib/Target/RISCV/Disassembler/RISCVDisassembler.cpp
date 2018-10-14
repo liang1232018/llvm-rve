@@ -54,6 +54,8 @@ extern "C" void LLVMInitializeRISCVDisassembler() {
                                          createRISCVDisassembler);
   TargetRegistry::RegisterMCDisassembler(getTheRISCV64Target(),
                                          createRISCVDisassembler);
+  TargetRegistry::RegisterMCDisassembler(getTheRISCV32ETarget(),
+                                         createRISCVDisassembler);
 }
 
 static const unsigned GPRDecoderTable[] = {

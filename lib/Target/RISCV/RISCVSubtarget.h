@@ -49,7 +49,7 @@ class RISCVSubtarget : public RISCVGenSubtargetInfo {
   /// Initializes using the passed in CPU and feature strings so that we can
   /// use initializer lists for subtarget initialization.
   RISCVSubtarget &initializeSubtargetDependencies(StringRef CPU, StringRef FS,
-                                                  bool Is64Bit);
+                                                  bool Is64Bit, bool IsEmbed);
 
 public:
   // Initializes the data members to match that of the specified triple.
