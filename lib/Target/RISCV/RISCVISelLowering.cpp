@@ -1555,8 +1555,9 @@ SDValue RISCVTargetLowering::LowerCall(CallLoweringInfo &CLI,
 
     Chain = DAG.getMemcpy(Chain, DL, FIPtr, Arg, SizeNode, Align,
                           /*IsVolatile=*/false,
-                          /*AlwaysInline=*/false, IsTailCall,
-                          MachinePointerInfo(), MachinePointerInfo());
+                          /*AlwaysInline=*/false,
+                          IsTailCall, MachinePointerInfo(),
+                          MachinePointerInfo());
     ByValArgs.push_back(FIPtr);
   }
 
@@ -1711,7 +1712,7 @@ SDValue RISCVTargetLowering::LowerCall(CallLoweringInfo &CLI,
   Glue = Chain.getValue(1);
 
   // Mark the end of the call, which is glued to the call itself.
-   Chain = DAG.getCALLSEQ_END(Chain,
+  Chain = DAG.getCALLSEQ_END(Chain,
                              DAG.getConstant(NumBytes, DL, PtrVT, true),
                              DAG.getConstant(0, DL, PtrVT, true),
                              Glue, DL);
