@@ -45,7 +45,8 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
   RISCVABI::ABI ABI = Subtarget.getTargetABI();
   assert(ABI != RISCVABI::ABI_Unknown && "Improperly initialised target ABI");
 
-  if (ABI != RISCVABI::ABI_ILP32 && ABI != RISCVABI::ABI_LP64)
+  if (ABI != RISCVABI::ABI_ILP32 && ABI != RISCVABI::ABI_LP64 &&
+      ABI != RISCVABI::ABI_ILP32E)
     report_fatal_error("Don't know how to lower this ABI");
 
   MVT XLenVT = Subtarget.getXLenVT();
@@ -128,8 +129,8 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
       ISD::SETUGT, ISD::SETUGE, ISD::SETULT, ISD::SETULE, ISD::SETUNE,
       ISD::SETGT,  ISD::SETGE,  ISD::SETNE};
 
-  ISD::NodeType FPOpToExtend[] = {
-      ISD::FSIN, ISD::FCOS, ISD::FSINCOS, ISD::FPOW, ISD::FREM};
+  ISD::NodeType FPOpToExtend[] = {ISD::FSIN, ISD::FCOS, ISD::FSINCOS, ISD::FPOW,
+                                  ISD::FREM};
 
   if (Subtarget.hasStdExtF()) {
     setOperationAction(ISD::FMINNUM, MVT::f32, Legal);
@@ -380,7 +381,7 @@ SDValue RISCVTargetLowering::lowerGlobalAddress(SDValue Op,
   SDValue GALo = DAG.getTargetGlobalAddress(GV, DL, Ty, 0, RISCVII::MO_LO);
   SDValue MNHi = SDValue(DAG.getMachineNode(RISCV::LUI, DL, Ty, GAHi), 0);
   SDValue MNLo =
-    SDValue(DAG.getMachineNode(RISCV::ADDI, DL, Ty, MNHi, GALo), 0);
+      SDValue(DAG.getMachineNode(RISCV::ADDI, DL, Ty, MNHi, GALo), 0);
   if (Offset != 0)
     return DAG.getNode(ISD::ADD, DL, Ty, MNLo,
                        DAG.getConstant(Offset, DL, XLenVT));
@@ -402,7 +403,7 @@ SDValue RISCVTargetLowering::lowerBlockAddress(SDValue Op,
   SDValue BALo = DAG.getTargetBlockAddress(BA, Ty, Offset, RISCVII::MO_LO);
   SDValue MNHi = SDValue(DAG.getMachineNode(RISCV::LUI, DL, Ty, BAHi), 0);
   SDValue MNLo =
-    SDValue(DAG.getMachineNode(RISCV::ADDI, DL, Ty, MNHi, BALo), 0);
+      SDValue(DAG.getMachineNode(RISCV::ADDI, DL, Ty, MNHi, BALo), 0);
   return MNLo;
 }
 
@@ -828,10 +829,7 @@ static MachineBasicBlock *emitSelectPseudo(MachineInstr &MI,
   auto CC = static_cast<ISD::CondCode>(MI.getOperand(3).getImm());
   unsigned Opcode = getBranchOpcodeForIntCondCode(CC);
 
-  BuildMI(HeadMBB, DL, TII.get(Opcode))
-    .addReg(LHS)
-    .addReg(RHS)
-    .addMBB(TailMBB);
+  BuildMI(HeadMBB, DL, TII.get(Opcode)).addReg(LHS).addReg(RHS).addMBB(TailMBB);
 
   // IfFalseMBB just falls through to TailMBB.
   IfFalseMBB->addSuccessor(TailMBB);
@@ -890,10 +888,11 @@ RISCVTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
 // register-size fields in the same situations they would be for fixed
 // arguments.
 
-static const MCPhysReg ArgGPRs[] = {
-  RISCV::X10, RISCV::X11, RISCV::X12, RISCV::X13,
-  RISCV::X14, RISCV::X15, RISCV::X16, RISCV::X17
-};
+static const MCPhysReg ArgGPRs[] = {RISCV::X10, RISCV::X11, RISCV::X12,
+                                    RISCV::X13, RISCV::X14, RISCV::X15,
+                                    RISCV::X16, RISCV::X17};
+static const MCPhysReg ArgEGPRs[] = {RISCV::X10, RISCV::X11, RISCV::X12,
+                                     RISCV::X13, RISCV::X14, RISCV::X15};
 
 // Pass a 2*XLEN argument that has been split into two XLEN values through
 // registers or the stack as necessary.
@@ -901,8 +900,16 @@ static bool CC_RISCVAssign2XLen(unsigned XLen, CCState &State, CCValAssign VA1,
                                 ISD::ArgFlagsTy ArgFlags1, unsigned ValNo2,
                                 MVT ValVT2, MVT LocVT2,
                                 ISD::ArgFlagsTy ArgFlags2) {
+  bool IsILP32E = State.getMachineFunction()
+                      .getSubtarget<RISCVSubtarget>()
+                      .getTargetABI() == RISCVABI::ABI_ILP32E;
   unsigned XLenInBytes = XLen / 8;
-  if (unsigned Reg = State.AllocateReg(ArgGPRs)) {
+  unsigned Reg;
+  if (!IsILP32E)
+    Reg = State.AllocateReg(ArgGPRs);
+  else
+    Reg = State.AllocateReg(ArgEGPRs);
+  if (Reg) {
     // At least one half can be passed via register.
     State.addLoc(CCValAssign::getReg(VA1.getValNo(), VA1.getValVT(), Reg,
                                      VA1.getLocVT(), CCValAssign::Full));
@@ -919,7 +926,12 @@ static bool CC_RISCVAssign2XLen(unsigned XLen, CCState &State, CCValAssign VA1,
     return false;
   }
 
-  if (unsigned Reg = State.AllocateReg(ArgGPRs)) {
+  if (!IsILP32E)
+    Reg = State.AllocateReg(ArgGPRs);
+  else
+    Reg = State.AllocateReg(ArgEGPRs);
+
+  if (Reg) {
     // The second half can also be passed via register.
     State.addLoc(
         CCValAssign::getReg(ValNo2, ValVT2, Reg, LocVT2, CCValAssign::Full));
@@ -937,10 +949,12 @@ static bool CC_RISCVAssign2XLen(unsigned XLen, CCState &State, CCValAssign VA1,
 static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
                      CCValAssign::LocInfo LocInfo, ISD::ArgFlagsTy ArgFlags,
                      CCState &State, bool IsFixed, bool IsRet, Type *OrigTy) {
+  bool IsILP32E = State.getMachineFunction()
+                      .getSubtarget<RISCVSubtarget>()
+                      .getTargetABI() == RISCVABI::ABI_ILP32E;
   unsigned XLen = DL.getLargestLegalIntTypeSizeInBits();
   assert(XLen == 32 || XLen == 64);
   MVT XLenVT = XLen == 32 ? MVT::i32 : MVT::i64;
-
   // Any return value split in to more than two values can't be returned
   // directly.
   if (IsRet && ValNo > 1)
@@ -964,10 +978,17 @@ static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
   unsigned TwoXLenInBytes = (2 * XLen) / 8;
   if (!IsFixed && ArgFlags.getOrigAlign() == TwoXLenInBytes &&
       DL.getTypeAllocSize(OrigTy) == TwoXLenInBytes) {
-    unsigned RegIdx = State.getFirstUnallocated(ArgGPRs);
-    // Skip 'odd' register if necessary.
-    if (RegIdx != array_lengthof(ArgGPRs) && RegIdx % 2 == 1)
-      State.AllocateReg(ArgGPRs);
+    if (!IsILP32E) {
+      unsigned RegIdx = State.getFirstUnallocated(ArgGPRs);
+      // Skip 'odd' register if necessary.
+      if (RegIdx != array_lengthof(ArgGPRs) && RegIdx % 2 == 1)
+        State.AllocateReg(ArgGPRs);
+    } else {
+      unsigned RegIdx = State.getFirstUnallocated(ArgEGPRs);
+      // Skip 'odd' register if necessary.
+      if (RegIdx != array_lengthof(ArgEGPRs) && RegIdx % 2 == 1)
+        State.AllocateReg(ArgEGPRs);
+    }
   }
 
   SmallVectorImpl<CCValAssign> &PendingLocs = State.getPendingLocs();
@@ -985,7 +1006,11 @@ static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
     // GPRs, split between a GPR and the stack, or passed completely on the
     // stack. LowerCall/LowerFormalArguments/LowerReturn must recognise these
     // cases.
-    unsigned Reg = State.AllocateReg(ArgGPRs);
+    unsigned Reg;
+    if (!IsILP32E)
+      Reg = State.AllocateReg(ArgGPRs);
+    else
+      Reg = State.AllocateReg(ArgEGPRs);
     LocVT = MVT::i32;
     if (!Reg) {
       unsigned StackOffset = State.AllocateStack(8, 8);
@@ -993,8 +1018,14 @@ static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
           CCValAssign::getMem(ValNo, ValVT, StackOffset, LocVT, LocInfo));
       return false;
     }
-    if (!State.AllocateReg(ArgGPRs))
-      State.AllocateStack(4, 4);
+    if (!IsILP32E) {
+      if (!State.AllocateReg(ArgGPRs))
+        State.AllocateStack(4, 4);
+    } else {
+      if (!State.AllocateReg(ArgEGPRs))
+        State.AllocateStack(4, 4);
+    }
+
     State.addLoc(CCValAssign::getReg(ValNo, ValVT, Reg, LocVT, LocInfo));
     return false;
   }
@@ -1027,7 +1058,12 @@ static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
   }
 
   // Allocate to a register if possible, or else a stack slot.
-  unsigned Reg = State.AllocateReg(ArgGPRs);
+  // ilp32e use less ArgGPRS
+  unsigned Reg;
+  if (!IsILP32E)
+    Reg = State.AllocateReg(ArgGPRs);
+  else
+    Reg = State.AllocateReg(ArgEGPRs);
   unsigned StackOffset = Reg ? 0 : State.AllocateStack(XLen / 8, XLen / 8);
 
   // If we reach this point and PendingLocs is non-empty, we must be at the
@@ -1255,14 +1291,14 @@ SDValue RISCVTargetLowering::LowerFormalArguments(
   if (Func.hasFnAttribute("interrupt")) {
     if (!Func.arg_empty())
       report_fatal_error(
-        "Functions with the interrupt attribute cannot have arguments!");
+          "Functions with the interrupt attribute cannot have arguments!");
 
     StringRef Kind =
-      MF.getFunction().getFnAttribute("interrupt").getValueAsString();
+        MF.getFunction().getFnAttribute("interrupt").getValueAsString();
 
     if (!(Kind == "user" || Kind == "supervisor" || Kind == "machine"))
       report_fatal_error(
-        "Function interrupt attribute argument not supported!");
+          "Function interrupt attribute argument not supported!");
   }
 
   EVT PtrVT = getPointerTy(DAG.getDataLayout());
@@ -1309,7 +1345,6 @@ SDValue RISCVTargetLowering::LowerFormalArguments(
     }
     InVals.push_back(ArgValue);
   }
-
   if (IsVarArg) {
     ArrayRef<MCPhysReg> ArgRegs = makeArrayRef(ArgGPRs);
     unsigned Idx = CCInfo.getFirstUnallocated(ArgRegs);
@@ -1512,9 +1547,8 @@ SDValue RISCVTargetLowering::LowerCall(CallLoweringInfo &CLI,
 
     Chain = DAG.getMemcpy(Chain, DL, FIPtr, Arg, SizeNode, Align,
                           /*IsVolatile=*/false,
-                          /*AlwaysInline=*/false,
-                          IsTailCall, MachinePointerInfo(),
-                          MachinePointerInfo());
+                          /*AlwaysInline=*/false, IsTailCall,
+                          MachinePointerInfo(), MachinePointerInfo());
     ByValArgs.push_back(FIPtr);
   }
 
@@ -1669,10 +1703,8 @@ SDValue RISCVTargetLowering::LowerCall(CallLoweringInfo &CLI,
   Glue = Chain.getValue(1);
 
   // Mark the end of the call, which is glued to the call itself.
-  Chain = DAG.getCALLSEQ_END(Chain,
-                             DAG.getConstant(NumBytes, DL, PtrVT, true),
-                             DAG.getConstant(0, DL, PtrVT, true),
-                             Glue, DL);
+  Chain = DAG.getCALLSEQ_END(Chain, DAG.getConstant(NumBytes, DL, PtrVT, true),
+                             DAG.getConstant(0, DL, PtrVT, true), Glue, DL);
   Glue = Chain.getValue(1);
 
   // Assign locations to each value returned by this call.
@@ -1789,7 +1821,7 @@ RISCVTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
 
     MachineFunction &MF = DAG.getMachineFunction();
     StringRef Kind =
-      MF.getFunction().getFnAttribute("interrupt").getValueAsString();
+        MF.getFunction().getFnAttribute("interrupt").getValueAsString();
 
     unsigned RetOpc;
     if (Kind == "user")

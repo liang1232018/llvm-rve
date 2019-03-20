@@ -21,6 +21,15 @@
 
 using namespace llvm;
 
+RISCVFrameLowering::RISCVFrameLowering(const RISCVSubtarget &STI)
+    : TargetFrameLowering(
+          StackGrowsDown,
+          /*StackAlignment=*/(STI.getTargetABI() == RISCVABI::ABI::ABI_ILP32E)
+              ? 4
+              : 16,
+          /*LocalAreaOffset=*/0),
+      STI(STI) {}
+
 bool RISCVFrameLowering::hasFP(const MachineFunction &MF) const {
   const TargetRegisterInfo *RegInfo = MF.getSubtarget().getRegisterInfo();
 
@@ -215,14 +224,13 @@ void RISCVFrameLowering::determineCalleeSaves(MachineFunction &MF,
   // unconditionally save all Caller-saved registers and
   // all FP registers, regardless whether they are used.
   MachineFrameInfo &MFI = MF.getFrameInfo();
-
   if (MF.getFunction().hasFnAttribute("interrupt") && MFI.hasCalls()) {
-
-    static const MCPhysReg CSRegs[] = { RISCV::X1,      /* ra */
-      RISCV::X5, RISCV::X6, RISCV::X7,                  /* t0-t2 */
-      RISCV::X10, RISCV::X11,                           /* a0-a1, a2-a7 */
-      RISCV::X12, RISCV::X13, RISCV::X14, RISCV::X15, RISCV::X16, RISCV::X17,
-      RISCV::X28, RISCV::X29, RISCV::X30, RISCV::X31, 0 /* t3-t6 */
+    static const MCPhysReg CSRegs[] = {
+        RISCV::X1,                         /* ra */
+        RISCV::X5,  RISCV::X6,  RISCV::X7, /* t0-t2 */
+        RISCV::X10, RISCV::X11,            /* a0-a1, a2-a7 */
+        RISCV::X12, RISCV::X13, RISCV::X14, RISCV::X15, RISCV::X16, RISCV::X17,
+        RISCV::X28, RISCV::X29, RISCV::X30, RISCV::X31, 0 /* t3-t6 */
     };
 
     for (unsigned i = 0; CSRegs[i]; ++i)
@@ -232,7 +240,7 @@ void RISCVFrameLowering::determineCalleeSaves(MachineFunction &MF,
         MF.getSubtarget<RISCVSubtarget>().hasStdExtF()) {
 
       // If interrupt is enabled, this list contains all FP registers.
-      const MCPhysReg * Regs = MF.getRegInfo().getCalleeSavedRegs();
+      const MCPhysReg *Regs = MF.getRegInfo().getCalleeSavedRegs();
 
       for (unsigned i = 0; Regs[i]; ++i)
         if (RISCV::FPR32RegClass.contains(Regs[i]) ||
