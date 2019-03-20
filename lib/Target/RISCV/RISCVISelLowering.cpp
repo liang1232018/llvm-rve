@@ -381,7 +381,7 @@ SDValue RISCVTargetLowering::lowerGlobalAddress(SDValue Op,
   SDValue GALo = DAG.getTargetGlobalAddress(GV, DL, Ty, 0, RISCVII::MO_LO);
   SDValue MNHi = SDValue(DAG.getMachineNode(RISCV::LUI, DL, Ty, GAHi), 0);
   SDValue MNLo =
-      SDValue(DAG.getMachineNode(RISCV::ADDI, DL, Ty, MNHi, GALo), 0);
+    SDValue(DAG.getMachineNode(RISCV::ADDI, DL, Ty, MNHi, GALo), 0);
   if (Offset != 0)
     return DAG.getNode(ISD::ADD, DL, Ty, MNLo,
                        DAG.getConstant(Offset, DL, XLenVT));
@@ -403,7 +403,7 @@ SDValue RISCVTargetLowering::lowerBlockAddress(SDValue Op,
   SDValue BALo = DAG.getTargetBlockAddress(BA, Ty, Offset, RISCVII::MO_LO);
   SDValue MNHi = SDValue(DAG.getMachineNode(RISCV::LUI, DL, Ty, BAHi), 0);
   SDValue MNLo =
-      SDValue(DAG.getMachineNode(RISCV::ADDI, DL, Ty, MNHi, BALo), 0);
+    SDValue(DAG.getMachineNode(RISCV::ADDI, DL, Ty, MNHi, BALo), 0);
   return MNLo;
 }
 
@@ -829,7 +829,10 @@ static MachineBasicBlock *emitSelectPseudo(MachineInstr &MI,
   auto CC = static_cast<ISD::CondCode>(MI.getOperand(3).getImm());
   unsigned Opcode = getBranchOpcodeForIntCondCode(CC);
 
-  BuildMI(HeadMBB, DL, TII.get(Opcode)).addReg(LHS).addReg(RHS).addMBB(TailMBB);
+  BuildMI(HeadMBB, DL, TII.get(Opcode))
+    .addReg(LHS)
+    .addReg(RHS)
+    .addMBB(TailMBB);
 
   // IfFalseMBB just falls through to TailMBB.
   IfFalseMBB->addSuccessor(TailMBB);
@@ -888,11 +891,14 @@ RISCVTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
 // register-size fields in the same situations they would be for fixed
 // arguments.
 
-static const MCPhysReg ArgGPRs[] = {RISCV::X10, RISCV::X11, RISCV::X12,
-                                    RISCV::X13, RISCV::X14, RISCV::X15,
-                                    RISCV::X16, RISCV::X17};
-static const MCPhysReg ArgEGPRs[] = {RISCV::X10, RISCV::X11, RISCV::X12,
-                                     RISCV::X13, RISCV::X14, RISCV::X15};
+static const MCPhysReg ArgGPRs[] = {
+  RISCV::X10, RISCV::X11, RISCV::X12, RISCV::X13,
+  RISCV::X14, RISCV::X15, RISCV::X16, RISCV::X17
+};
+static const MCPhysReg ArgEGPRs[] = {
+  RISCV::X10, RISCV::X11, RISCV::X12,
+  RISCV::X13, RISCV::X14, RISCV::X15
+};
 
 // Pass a 2*XLEN argument that has been split into two XLEN values through
 // registers or the stack as necessary.
@@ -955,6 +961,7 @@ static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
   unsigned XLen = DL.getLargestLegalIntTypeSizeInBits();
   assert(XLen == 32 || XLen == 64);
   MVT XLenVT = XLen == 32 ? MVT::i32 : MVT::i64;
+  
   // Any return value split in to more than two values can't be returned
   // directly.
   if (IsRet && ValNo > 1)
@@ -1291,14 +1298,14 @@ SDValue RISCVTargetLowering::LowerFormalArguments(
   if (Func.hasFnAttribute("interrupt")) {
     if (!Func.arg_empty())
       report_fatal_error(
-          "Functions with the interrupt attribute cannot have arguments!");
+        "Functions with the interrupt attribute cannot have arguments!");
 
     StringRef Kind =
-        MF.getFunction().getFnAttribute("interrupt").getValueAsString();
+      MF.getFunction().getFnAttribute("interrupt").getValueAsString();
 
     if (!(Kind == "user" || Kind == "supervisor" || Kind == "machine"))
       report_fatal_error(
-          "Function interrupt attribute argument not supported!");
+        "Function interrupt attribute argument not supported!");
   }
 
   EVT PtrVT = getPointerTy(DAG.getDataLayout());
@@ -1345,6 +1352,7 @@ SDValue RISCVTargetLowering::LowerFormalArguments(
     }
     InVals.push_back(ArgValue);
   }
+
   if (IsVarArg) {
     ArrayRef<MCPhysReg> ArgRegs = makeArrayRef(ArgGPRs);
     unsigned Idx = CCInfo.getFirstUnallocated(ArgRegs);
@@ -1703,8 +1711,10 @@ SDValue RISCVTargetLowering::LowerCall(CallLoweringInfo &CLI,
   Glue = Chain.getValue(1);
 
   // Mark the end of the call, which is glued to the call itself.
-  Chain = DAG.getCALLSEQ_END(Chain, DAG.getConstant(NumBytes, DL, PtrVT, true),
-                             DAG.getConstant(0, DL, PtrVT, true), Glue, DL);
+   Chain = DAG.getCALLSEQ_END(Chain,
+                             DAG.getConstant(NumBytes, DL, PtrVT, true),
+                             DAG.getConstant(0, DL, PtrVT, true),
+                             Glue, DL);
   Glue = Chain.getValue(1);
 
   // Assign locations to each value returned by this call.
@@ -1821,7 +1831,7 @@ RISCVTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
 
     MachineFunction &MF = DAG.getMachineFunction();
     StringRef Kind =
-        MF.getFunction().getFnAttribute("interrupt").getValueAsString();
+      MF.getFunction().getFnAttribute("interrupt").getValueAsString();
 
     unsigned RetOpc;
     if (Kind == "user")
