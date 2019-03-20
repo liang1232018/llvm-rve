@@ -225,10 +225,9 @@ void RISCVFrameLowering::determineCalleeSaves(MachineFunction &MF,
   // all FP registers, regardless whether they are used.
   MachineFrameInfo &MFI = MF.getFrameInfo();
   if (MF.getFunction().hasFnAttribute("interrupt") && MFI.hasCalls()) {
-    static const MCPhysReg CSRegs[] = {
-      RISCV::X1,                         /* ra */
-      RISCV::X5,  RISCV::X6,  RISCV::X7, /* t0-t2 */
-      RISCV::X10, RISCV::X11,            /* a0-a1, a2-a7 */
+    static const MCPhysReg CSRegs[] = { RISCV::X1,      /* ra */
+      RISCV::X5, RISCV::X6, RISCV::X7,                  /* t0-t2 */
+      RISCV::X10, RISCV::X11,                           /* a0-a1, a2-a7 */
       RISCV::X12, RISCV::X13, RISCV::X14, RISCV::X15, RISCV::X16, RISCV::X17,
       RISCV::X28, RISCV::X29, RISCV::X30, RISCV::X31, 0 /* t3-t6 */
     };
